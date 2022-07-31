@@ -3,14 +3,13 @@ package main
 import (
 	"fmt"
 	"time"
-
-	"errors"
-	"os"
-
-	"math/rand"
+	"sort"
 	"strconv"
 
-	"encoding/json"
+	"errors" //пакети для обробки помилок
+	"os"
+
+	"encoding/json" //пакети для роботи з джсон
 	"io/ioutil"
 )
 
@@ -25,6 +24,12 @@ type Train struct {
 	DepartureTime      time.Time `json: "departureTime"`
 }
 
+const ( // константи критерій, адже ми їх перевикористовуємо
+	criteriaPrice string = "price"
+	criteriaDepTime = "departure-time"
+	criteriaArrTime = "arrival-time"
+)
+
 func main() {
 	//	... запит даних від користувача
 	var departureStation, arrivalStation, criteria string
@@ -37,7 +42,7 @@ func main() {
 	fmt.Print("arrivalStation: ")
 	fmt.Scanln(&arrivalStation)
 
-	fmt.Println(`!! -- Keep in mind: valid criteria values are "price", "arrival-time", "departure-time" (without quotes).`)
+	fmt.Printf(`!! -- Keep in mind: valid criteria values are "%s", "%s", "%s" (without quotes).%s`, criteriaPrice, criteriaDepTime, criteriaArrTime, "\n")
 	fmt.Print("criteria: ")
 	fmt.Scanln(&criteria)
 
@@ -52,38 +57,13 @@ func main() {
 
 	//	... друк result
 	for _, train := range result {
-
-		//якщо час прибуття менший за час відправки, значить настав наступний день: переносимо відправлення на 31 грудня
-		departureDay := train.DepartureTime.Day()
-		departureMonth := train.DepartureTime.Month()
-		if train.ArrivalTime.Before(train.DepartureTime) {
-			departureDay = 31
-			departureMonth = time.December
-		}
-
-		fmt.Printf(`Train ID: %v, Departure station ID: %v, Arrival station ID: %v, Price: %v, Departure time: "%v" of %s at %v hours %v minutes, Arrival time: "%v" of %s at %v hours %v minutes.`, 
-			train.TrainID, 
-			train.DepartureStationID, 
-			train.ArrivalStationID, 
-			train.Price,
-
-			departureDay, 
-			departureMonth, 
-			train.DepartureTime.Hour(),
-			train.DepartureTime.Minute(),
-
-			train.ArrivalTime.Day(), 
-			train.ArrivalTime.Month(), 
-			train.ArrivalTime.Hour(),
-			train.ArrivalTime.Minute(),
-		)
-		fmt.Println()
+		printTrain(train)
 	}
 }
 
 //повертає 3 перші за сортуванням поїзди, що задовільняють станції прибуття та відправлення; перевіряє валідність вхідних даних користувача
 func FindTrains(departureStation, arrivalStation, criteria string) (Trains, error) {
-	//обробка помилок з вхідних даних; конвертування айді станцій у інт значення
+	//обробка помилок з вхідних даних; у разі відсутності - конвертування айді станцій у інт значення
 	departureStationID, arrivalStationID, err := checkInput(departureStation, arrivalStation, criteria)
 	if err != nil {
 		return nil, fmt.Errorf("invalid input: %w", err)
@@ -91,9 +71,9 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 
 	// ... код
 	// починаємо парсити файл джсон та обробляємо помилки, якщо виникають
-	trains, errTrains := ParseJSON()
-	if errTrains != nil {
-		return nil, errTrains
+	trains, errParse := parseJSON()
+	if errParse != nil {
+		return nil, errParse
 	}
 
 	//знаходимо усі рейси, що б відповідали заданим значенням depStation та arrStation
@@ -104,10 +84,13 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 
 	// маєте повернути перші 3 правильні значення (або ніл, якщо їх нема)
 	switch len(results) {
-	case 0: return nil, nil
-	case 1, 2, 3: return results, nil
-	default: return results[:3], nil 
+	case 0: 
+		return nil, nil
+	case 1, 2: // світч-кейс щоб якщо результатів 0-2, програма не сварилась на індекс поза межами слайсу [:3]
+		return results, nil 
 	}
+
+	return results[:3], nil
 
 }
 
@@ -118,7 +101,7 @@ func checkInput(depStation, arrStation, criteria string) (int, int, error) {
 		return 0, 0, errors.New("empty departure station")
 	}
 	depStationID, errDepStation := strconv.Atoi(depStation)
-	if depStationID < 0 || errDepStation != nil {
+	if depStationID < 0 || errDepStation != nil { //перевірка на натуральне число
 		return 0, 0, errors.New("bad departure station input")
 	}
 
@@ -127,12 +110,12 @@ func checkInput(depStation, arrStation, criteria string) (int, int, error) {
 		return 0, 0, errors.New("empty arrival station")
 	}
 	arrStationID, errArrStation := strconv.Atoi(arrStation)
-	if arrStationID < 0 || errArrStation != nil {
+	if arrStationID < 0 || errArrStation != nil { //перевірка на натуральне число
 		return 0, 0, errors.New("bad arrival station input")
 	}
 
 	//перевірка на валідний критерій для сортування
-	if criteria != "price" && criteria != "arrival-time" && criteria != "departure-time" {
+	if criteria != criteriaPrice && criteria != criteriaDepTime && criteria != criteriaArrTime {
 		return 0, 0, errors.New("unsupported criteria")
 	}
 
@@ -156,21 +139,21 @@ func (tr *Train) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	//парсинг часу та обробка помилок
-	parsedArrTime, errArrTime := time.Parse("15:04:05", res.ArrivalTime)
-	if errArrTime != nil {
-		return fmt.Errorf("failed to parse arrival time: %w", errArrTime)
-	}
+	//парсинг часу відправлення та прибуття та обробка помилок
 	parsedDepTime, errDepTime := time.Parse("15:04:05", res.DepartureTime)
 	if errDepTime != nil {
 		return fmt.Errorf("failed to parse departure time: %w", errDepTime)
 	}
+	parsedArrTime, errArrTime := time.Parse("15:04:05", res.ArrivalTime)
+	if errArrTime != nil {
+		return fmt.Errorf("failed to parse arrival time: %w", errArrTime)
+	}
 
 	//присвоюємо потрібній структурі значення з тимчасової, конвертуючи
-	tr.ArrivalTime = time.Date(0, time.January, 1, parsedArrTime.Hour(), parsedArrTime.Minute(), parsedArrTime.Second(), 0, time.UTC)
-	tr.DepartureTime = time.Date(0, time.January, 1, parsedDepTime.Hour(), parsedDepTime.Minute(), parsedDepTime.Second(), 0, time.UTC)
+	tr.DepartureTime = time.Date(1, time.January, 1, parsedDepTime.Hour(), parsedDepTime.Minute(), parsedDepTime.Second(), 0, time.UTC)
+	tr.ArrivalTime = time.Date(1, time.January, 1, parsedArrTime.Hour(), parsedArrTime.Minute(), parsedArrTime.Second(), 0, time.UTC)
 
-	//присвоюємо усі інші значення
+	//присвоюємо усі інші значення (без змін)
 	tr.TrainID = res.TrainID
 	tr.DepartureStationID = res.DepartureStationID
 	tr.ArrivalStationID = res.ArrivalStationID
@@ -180,14 +163,14 @@ func (tr *Train) UnmarshalJSON(data []byte) error {
 }
 
 //анмаршал джсон файла у трейнз
-func ParseJSON() ([]Train, error) {
+func parseJSON() ([]Train, error) {
 	//відкриваємо та читаємо файл, якщо не вийшло - повертаємо помилку
 	data, errRead := ioutil.ReadFile("data.json")
 	if errRead != nil {
-		return nil, fmt.Errorf("failed to open json file: %w", errRead)
+		return nil, fmt.Errorf("failed to read json file: %w", errRead)
 	}
 
-	//ураховуючи метод "", додаємо поїди до змінної "результат" типу слайсу поїздів; обробляємо та повертаємо помилку, якщо така сталась
+	//ураховуючи метод UnmarshalJSON(), додаємо поїзди до змінної "результат" типу слайсу поїздів; обробляємо та повертаємо помилку, якщо така сталась
 	var res []Train
 	errUnmarshal := json.Unmarshal(data, &res)
 	if errUnmarshal != nil {
@@ -199,57 +182,46 @@ func ParseJSON() ([]Train, error) {
 
 //повертає лише ті рейси, у яких станція відправлення та прибуття збігається з вхідними даними
 func getTrains(allTrains Trains, depStation int, arrStation int) Trains {
-	var res Trains
+	var result Trains
 
 	for _, train := range allTrains {
 		if train.DepartureStationID == depStation && train.ArrivalStationID == arrStation {
-			res = append(res, train)
+			result = append(result, train)
 		}
 	}
 
-	return res
+	return result
 }
 
-//сортування рейсів за критерієм за допомогою quicksort
+//сортування рейсів за критерієм за допомогою slicestable, оскільки він зберігає порядок
 func sortByCriteria(trains Trains, criteria string) Trains {
-	rand.Seed(time.Now().UnixNano())
-
-	if len(trains) < 2 {
-		return trains
-	}
-
-	left, right := 0, len(trains)-1
-	pivot := rand.Int() % len(trains)
-	trains[pivot], trains[right] = trains[right], trains[pivot]
-
 	switch criteria {
-	case "price":
-		for i := 0; i < len(trains); i++ {
-			if trains[i].Price < trains[right].Price {
-				trains[left], trains[i] = trains[i], trains[left]
-				left++
-			}
-		}
-	case "departure-time":
-		for i := 0; i < len(trains); i++ {
-			if trains[right].DepartureTime.After(trains[i].DepartureTime) {
-				trains[left], trains[i] = trains[i], trains[left]
-		 		left++
-			}
-		}
-	case "arrival-time":
-		for i := 0; i < len(trains); i++ {
-			if trains[right].ArrivalTime.After(trains[i].ArrivalTime) {
-				trains[left], trains[i] = trains[i], trains[left]
-		 		left++
-			}
-		}
+	case criteriaPrice:
+		sort.SliceStable(trains, func(a, b int) bool {
+			return trains[a].Price < trains[b].Price
+		})
+	case criteriaDepTime:
+		sort.SliceStable(trains, func(a, b int) bool {
+			return trains[b].DepartureTime.After(trains[a].DepartureTime)
+		})
+	case criteriaArrTime:
+		sort.SliceStable(trains, func(a, b int) bool {
+			return trains[b].ArrivalTime.After(trains[a].ArrivalTime)
+		})
 	}
-
-	trains[left], trains[right] = trains[right], trains[left]
-
-	sortByCriteria(trains[:left], criteria)
-    sortByCriteria(trains[left+1:], criteria)
 
 	return trains
+}
+
+//виводить інформацію про кожний рейс у зручному для читання форматі
+func printTrain(tr Train) {
+	fmt.Printf(`Train ID: %v, Departure station ID: %v, Arrival station ID: %v, Price: %v, Departure time: %s, Arrival time: %s.%s`, 
+		tr.TrainID, 
+		tr.DepartureStationID, 
+		tr.ArrivalStationID, 
+		tr.Price,
+		tr.DepartureTime.Format("15:04:05"),
+		tr.ArrivalTime.Format("15:04:05"),
+		"\n",
+	)
 }
