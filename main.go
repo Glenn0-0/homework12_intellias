@@ -51,7 +51,7 @@ func main() {
 	
 	//	... обробка помилки
 	if err != nil {
-		fmt.Println(fmt.Errorf("operation failed: %w", err))
+		fmt.Println(err)
 		os.Exit(0)
 	}
 
@@ -64,9 +64,9 @@ func main() {
 //повертає 3 перші за сортуванням поїзди, що задовільняють станції прибуття та відправлення; перевіряє валідність вхідних даних користувача
 func FindTrains(departureStation, arrivalStation, criteria string) (Trains, error) {
 	//обробка помилок з вхідних даних; у разі відсутності - конвертування айді станцій у інт значення
-	departureStationID, arrivalStationID, err := checkInput(departureStation, arrivalStation, criteria)
-	if err != nil {
-		return nil, fmt.Errorf("invalid input: %w", err)
+	departureStationID, arrivalStationID, errInput := checkInput(departureStation, arrivalStation, criteria)
+	if errInput != nil {
+		return nil, errInput
 	}
 
 	// ... код
