@@ -6,8 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"errors" // пакети для обробки помилок.
-	"os"
+	"errors"
 
 	"encoding/json" // пакети для роботи з JSON.
 	"io/ioutil"
@@ -52,7 +51,7 @@ func main() {
 	//	... обробка помилки.
 	if err != nil {
 		fmt.Println(err)
-		os.Exit(0)
+		return
 	}
 
 	//	... друк result.
