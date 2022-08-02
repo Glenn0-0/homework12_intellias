@@ -66,7 +66,7 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 	// обробка помилок з вхідних даних; у разі відсутності - конвертування ID станцій у int значення.
 	departureStationID, arrivalStationID, errInput := checkInput(departureStation, arrivalStation, criteria)
 	if errInput != nil {
-		return nil, errInput
+		return nil, errInput // мало б бути fmt.Errorf("invalid input: %w", errInput), але нехай вже буде виправлене.
 	}
 
 	// ... код
