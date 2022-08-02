@@ -92,7 +92,6 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 	}
 
 	return results[:3], nil
-
 }
 
 // перевіряє валідність вхідних даних, повертає числові значення станцій або помилку.
@@ -101,6 +100,7 @@ func checkInput(depStation, arrStation, criteria string) (int, int, error) {
 	if depStation == "" {
 		return 0, 0, errors.New("empty departure station")
 	}
+
 	depStationID, errDepStation := strconv.Atoi(depStation)
 	if depStationID < 0 || errDepStation != nil { // перевірка на натуральне число.
 		return 0, 0, errors.New("bad departure station input")
@@ -110,6 +110,7 @@ func checkInput(depStation, arrStation, criteria string) (int, int, error) {
 	if arrStation == "" {
 		return 0, 0, errors.New("empty arrival station")
 	}
+
 	arrStationID, errArrStation := strconv.Atoi(arrStation)
 	if arrStationID < 0 || errArrStation != nil { // перевірка на натуральне число.
 		return 0, 0, errors.New("bad arrival station input")
@@ -145,6 +146,7 @@ func (tr *Train) UnmarshalJSON(data []byte) error {
 	if errDepTime != nil {
 		return fmt.Errorf("failed to parse departure time: %w", errDepTime)
 	}
+
 	parsedArrTime, errArrTime := time.Parse("15:04:05", res.ArrivalTime)
 	if errArrTime != nil {
 		return fmt.Errorf("failed to parse arrival time: %w", errArrTime)
@@ -174,6 +176,7 @@ func parseJSON() ([]Train, error) {
 	// ураховуючи метод UnmarshalJSON(), додаємо поїзди до змінної result типу слайсу поїздів; обробляємо та повертаємо помилку, якщо така сталась.
 	var res []Train
 	errUnmarshal := json.Unmarshal(data, &res)
+
 	if errUnmarshal != nil {
 		return nil, fmt.Errorf("failed to unmarshal json file: %w", errUnmarshal)
 	}
