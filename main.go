@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"errors"
+	"errors" // пакети для обробки помилок.
 
 	"encoding/json" // пакети для роботи з JSON.
 	"io/ioutil"
@@ -23,7 +23,7 @@ type Train struct {
 	DepartureTime      time.Time `json:"departureTime"`
 }
 
-const ( // константи критерій, адже ми їх перевикористовуємо.
+const ( // константи критеріїв, адже ми їх перевикористовуємо.
 	criteriaPrice   = "price"
 	criteriaDepTime = "departure-time"
 	criteriaArrTime = "arrival-time"
