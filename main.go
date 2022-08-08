@@ -23,10 +23,18 @@ type Train struct {
 	DepartureTime      time.Time `json:"departureTime"`
 }
 
-const ( // константи критеріїв, адже ми їх перевикористовуємо.
-	criteriaPrice   = "price"
-	criteriaDepTime = "departure-time"
-	criteriaArrTime = "arrival-time"
+var (
+	validCriteria = []string{"price", "departure-time", "arrival-time"} // список можливих критеріїв.
+
+	criteriaArrTime = validCriteria[2]
+	criteriaDepTime = validCriteria[1]
+	criteriaPrice   = validCriteria[0]
+)
+
+const (
+	dataFile           = "data.json" // назва файлу з рейсами.
+	maxNumberOfResults = 3           // кількість рейсів, що потрібно вивести.
+	timeLayout         = "15:04:05"  // макет для форматування часу.
 )
 
 func main() {
@@ -55,17 +63,27 @@ func main() {
 	}
 
 	//	... друк result.
-	for _, train := range result {
-		printTrain(train)
-	}
+	result.printTrains()
 }
 
 // повертає 3 перші за сортуванням поїзди, що задовільняють станції прибуття та відправлення; перевіряє валідність вхідних даних користувача.
 func FindTrains(departureStation, arrivalStation, criteria string) (Trains, error) {
-	// обробка помилок з вхідних даних; у разі відсутності - конвертування ID станцій у int значення.
-	departureStationID, arrivalStationID, errInput := checkInput(departureStation, arrivalStation, criteria)
+	// обробка помилок з вхідних даних.
+	// перевірка на непусті значення станцій та валідний критерій
+	errInput := checkInput(departureStation, arrivalStation, criteria)
 	if errInput != nil {
 		return nil, errInput // мало б бути fmt.Errorf("invalid input: %w", errInput), але нехай вже буде виправлене.
+	}
+
+	// конвертування у int та перевірка на валідне значення станції.
+	departureStationID, errDepStation := strconv.Atoi(departureStation)
+	if departureStationID < 0 || errDepStation != nil { // перевірка на натуральне число.
+		return nil, errors.New("bad departure station input")
+	}
+
+	arrivalStationID, errArrStation := strconv.Atoi(arrivalStation)
+	if arrivalStationID < 0 || errArrStation != nil { // перевірка на натуральне число.
+		return nil, errors.New("bad arrival station input")
 	}
 
 	// ... код
@@ -75,52 +93,45 @@ func FindTrains(departureStation, arrivalStation, criteria string) (Trains, erro
 		return nil, errParse
 	}
 
-	// знаходимо усі рейси, що б відповідали заданим значенням depStation та arrStation.
-	results := getTrains(trains, departureStationID, arrivalStationID)
-
-	// сортуємо варіанти за критерієм.
-	results = sortByCriteria(results, criteria)
+	// знаходимо усі рейси, що б відповідали заданим значенням depStation та arrStation та сортуємо варіанти за критерієм.
+	results := sortByCriteria(getTrains(trains, departureStationID, arrivalStationID), criteria)
 
 	// маєте повернути перші 3 правильні значення (або ніл, якщо їх нема).
-	// nolint: gomnd
-	switch len(results) {
-	case 0:
-		return nil, nil
-	case 1, 2: // світч-кейс, щоб якщо результатів всього 0-2, програма не сварилась на індекс поза межами слайсу [:3].
+	if len(results) < maxNumberOfResults {
 		return results, nil
 	}
 
-	return results[:3], nil
+	return results[:maxNumberOfResults], nil
 }
 
 // перевіряє валідність вхідних даних, повертає числові значення станцій або помилку.
-func checkInput(depStation, arrStation, criteria string) (int, int, error) {
-	// присвоєння значення та перевірка на валідність станції відправлення.
+func checkInput(depStation, arrStation, criteria string) error {
+	// перевірка на непусте значення станції відправлення.
 	if depStation == "" {
-		return 0, 0, errors.New("empty departure station")
+		return errors.New("empty departure station")
 	}
 
-	depStationID, errDepStation := strconv.Atoi(depStation)
-	if depStationID < 0 || errDepStation != nil { // перевірка на натуральне число.
-		return 0, 0, errors.New("bad departure station input")
-	}
-
-	// присвоєння значення та перевірка на валідність станції прибуття.
+	// перевірка на непусте значення станції прибуття.
 	if arrStation == "" {
-		return 0, 0, errors.New("empty arrival station")
-	}
-
-	arrStationID, errArrStation := strconv.Atoi(arrStation)
-	if arrStationID < 0 || errArrStation != nil { // перевірка на натуральне число.
-		return 0, 0, errors.New("bad arrival station input")
+		return errors.New("empty arrival station")
 	}
 
 	// перевірка на валідний критерій для сортування.
-	if criteria != criteriaPrice && criteria != criteriaDepTime && criteria != criteriaArrTime {
-		return 0, 0, errors.New("unsupported criteria")
+	if !contains(validCriteria, criteria) {
+		return errors.New("unsupported criteria")
 	}
 
-	return depStationID, arrStationID, nil
+	return nil
+}
+
+func contains(sliceOfCriterias []string, criteria string) bool {
+	for _, cr := range sliceOfCriterias {
+		if criteria == cr {
+			return true
+		}
+	}
+
+	return false
 }
 
 // метод для анмаршалінгу JSON, адже "hh:mm:ss" не парситься у поле типу time.Time.
@@ -141,12 +152,12 @@ func (tr *Train) UnmarshalJSON(data []byte) error {
 	}
 
 	// парсинг часу відправлення та прибуття; обробка помилок.
-	parsedDepTime, errDepTime := time.Parse("15:04:05", res.DepartureTime)
+	parsedDepTime, errDepTime := time.Parse(timeLayout, res.DepartureTime)
 	if errDepTime != nil {
 		return fmt.Errorf("failed to parse departure time: %w", errDepTime)
 	}
 
-	parsedArrTime, errArrTime := time.Parse("15:04:05", res.ArrivalTime)
+	parsedArrTime, errArrTime := time.Parse(timeLayout, res.ArrivalTime)
 	if errArrTime != nil {
 		return fmt.Errorf("failed to parse arrival time: %w", errArrTime)
 	}
@@ -167,7 +178,7 @@ func (tr *Train) UnmarshalJSON(data []byte) error {
 // анмаршал JSON файла у Trains.
 func parseJSON() ([]Train, error) {
 	// відкриваємо та читаємо файл, якщо не вийшло - повертаємо помилку.
-	data, errRead := ioutil.ReadFile("data.json")
+	data, errRead := ioutil.ReadFile(dataFile)
 	if errRead != nil {
 		return nil, fmt.Errorf("failed to read json file: %w", errRead)
 	}
@@ -184,7 +195,7 @@ func parseJSON() ([]Train, error) {
 }
 
 // повертає лише ті рейси, у яких станція відправлення та прибуття збігається з вхідними даними.
-func getTrains(allTrains Trains, depStation int, arrStation int) Trains {
+func getTrains(allTrains Trains, depStation, arrStation int) Trains {
 	var result Trains
 
 	for _, train := range allTrains {
@@ -217,14 +228,16 @@ func sortByCriteria(trains Trains, criteria string) Trains {
 }
 
 // виводить інформацію про кожний рейс у зручному для читання форматі.
-func printTrain(tr Train) {
-	fmt.Printf(`Train ID: %v, Departure station ID: %v, Arrival station ID: %v, Price: %v, Departure time: %s, Arrival time: %s.%s`,
-		tr.TrainID,
-		tr.DepartureStationID,
-		tr.ArrivalStationID,
-		tr.Price,
-		tr.DepartureTime.Format("15:04:05"),
-		tr.ArrivalTime.Format("15:04:05"),
-		"\n",
-	)
+func (trains Trains) printTrains() {
+	for _, train := range trains {
+		fmt.Printf(`Train ID: %v, Departure station ID: %v, Arrival station ID: %v, Price: %v, Departure time: %s, Arrival time: %s.%s`,
+			train.TrainID,
+			train.DepartureStationID,
+			train.ArrivalStationID,
+			train.Price,
+			train.DepartureTime.Format(timeLayout),
+			train.ArrivalTime.Format(timeLayout),
+			"\n",
+		)
+	}
 }
